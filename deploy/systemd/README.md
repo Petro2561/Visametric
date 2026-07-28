@@ -38,5 +38,5 @@ journalctl -u visametric-bot -n 50 --no-pager
 journalctl -u visametric-admin -n 50 --no-pager
 ```
 
-Админка: http://SERVER_IP:8000/admin  
+Админка: http://SERVER_IP:8010/admin  
 Для доступа снаружи в `.env`: `ADMIN_HOST=0.0.0.0`

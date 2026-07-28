@@ -34,5 +34,5 @@ def load_admin_config() -> AdminConfig:
             f"sqlite+aiosqlite:///{db_path}",
         ).strip(),
         host=os.getenv("ADMIN_HOST", "127.0.0.1").strip(),
-        port=int(os.getenv("ADMIN_PORT", "8000")),
+        port=int(os.getenv("ADMIN_PORT", "8010")),
     )
