@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Telegram-бот Visametric: даты поиска + проверка слотов."""
+"""Telegram-бот Visametric: город, даты поиска + проверка слотов."""
 
 from __future__ import annotations
 
@@ -22,7 +22,16 @@ from dotenv import load_dotenv
 
 from src.check_slots import check_slots, format_slots_message, load_config
 from src.scheduler import get_check_lock, shutdown_scheduler, start_scheduler
-from src.user_dates import add_date, get_dates, normalize_date, register_user, remove_date
+from src.user_dates import (
+    CITIES,
+    add_date,
+    get_city,
+    get_dates,
+    normalize_date,
+    register_user,
+    remove_date,
+    set_city,
+)
 
 ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / ".env")
@@ -55,6 +64,16 @@ def remove_dates_keyboard(dates: list[str]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def city_keyboard(current: str | None = None) -> InlineKeyboardMarkup:
+    rows = []
+    for city in CITIES:
+        label = f"✓ {city}" if city == current else city
+        rows.append(
+            [InlineKeyboardButton(text=label, callback_data=f"city:set:{city}")]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 async def cmd_start(message: Message, state: FSMContext) -> None:
     await state.clear()
     if not message.from_user:
@@ -72,25 +91,71 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
         user.username,
         is_new,
     )
+    city = get_city(user.id)
     await message.answer(
         "Привет! Это бот для поиска свободных слотов записи в Visametric "
         "(визовый центр Германии).\n\n"
-        "Он проверяет ближайшие даты NORMAL / PRIME / VIP и сравнивает их "
-        "с вашими датами поиска.\n\n"
+        "1) Выберите город\n"
+        "2) Укажите крайнюю дату — уведомление придёт, "
+        "только если появятся слоты <b>раньше</b> неё\n\n"
         "Команды:\n"
-        "/select_dates — добавить или удалить дату поиска\n"
-        "/my_dates — ваши даты\n"
+        "/city — выбрать город\n"
+        "/select_dates — крайняя дата\n"
+        "/my_dates — ваши настройки\n"
         "/slots — проверить слоты сейчас\n\n"
-        "Автопроверка слотов идёт по расписанию; отчёт приходит, "
-        "если у вас есть даты в /select_dates.",
+        "Автопроверка идёт по расписанию; пустые отчёты не приходят.",
+        parse_mode="HTML",
+    )
+    await message.answer(
+        "Выберите город:" if not city else f"Текущий город: <b>{city}</b>\nСменить:",
+        parse_mode="HTML",
+        reply_markup=city_keyboard(city),
+    )
+
+
+async def cmd_city(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    if not message.from_user:
+        return
+    register_user(message.from_user.id)
+    city = get_city(message.from_user.id)
+    await message.answer(
+        "Выберите город для поиска слотов:"
+        + (f"\nСейчас: <b>{city}</b>" if city else ""),
+        parse_mode="HTML",
+        reply_markup=city_keyboard(city),
+    )
+
+
+async def on_city_set(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    if not callback.from_user or not callback.message:
+        return
+    city = (callback.data or "").removeprefix("city:set:")
+    if city not in CITIES:
+        await callback.message.answer("Неизвестный город.")
+        return
+    register_user(callback.from_user.id)
+    set_city(callback.from_user.id, city)
+    await callback.message.answer(
+        f"Город: <b>{city}</b>\nДальше укажите крайнюю дату: /select_dates",
+        parse_mode="HTML",
     )
 
 
 async def cmd_select_dates(message: Message, state: FSMContext) -> None:
     await state.clear()
+    if message.from_user and not get_city(message.from_user.id):
+        await message.answer(
+            "Сначала выберите город: /city",
+            reply_markup=city_keyboard(),
+        )
+        return
     await message.answer(
-        "Укажите дату, по которой искать слоты.\n"
-        "Формат: <code>DD-MM-YYYY</code> (например 17-09-2026)",
+        "Укажите <b>крайнюю дату</b>: нужны слоты <b>раньше</b> неё.\n"
+        "Пример: поставили <code>29-09-2026</code> — придёт уведомление, "
+        "если появится 17-09-2026 или другая дата до 29-09.\n\n"
+        "Формат: <code>DD-MM-YYYY</code>",
         parse_mode="HTML",
         reply_markup=select_dates_keyboard(),
     )
@@ -101,7 +166,8 @@ async def on_date_add(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(DateFSM.waiting_add)
     if callback.message:
         await callback.message.answer(
-            "Пришлите дату для добавления:\n<code>DD-MM-YYYY</code>",
+            "Пришлите крайнюю дату:\n<code>DD-MM-YYYY</code>\n"
+            "(уведомления — только про слоты раньше этой даты)",
             parse_mode="HTML",
         )
 
@@ -154,9 +220,13 @@ async def on_add_date_text(message: Message, state: FSMContext) -> None:
         return
     dates = add_date(message.from_user.id, date)
     await state.clear()
+    city = get_city(message.from_user.id) or "не выбран"
     await message.answer(
-        "Добавлено: <b>{}</b>\n\nТекущие даты:\n{}".format(
-            date, "\n".join(f"• {d}" for d in dates)
+        "Крайняя дата: <b>{}</b>\n"
+        "Город: <b>{}</b>\n"
+        "Будем присылать слоты <b>строго раньше</b> этой даты.\n\n"
+        "Ваши даты:\n{}".format(
+            date, city, "\n".join(f"• {d}" for d in dates)
         ),
         parse_mode="HTML",
     )
@@ -166,19 +236,29 @@ async def cmd_my_dates(message: Message, state: FSMContext) -> None:
     await state.clear()
     if not message.from_user:
         return
+    city = get_city(message.from_user.id)
     dates = get_dates(message.from_user.id)
-    if not dates:
-        await message.answer("Дат пока нет. Добавьте через /select_dates")
-        return
-    await message.answer(
-        "Даты поиска:\n" + "\n".join(f"• {d}" for d in dates)
-    )
+    lines = [f"Город: <b>{city or 'не выбран'}</b> (/city)"]
+    if dates:
+        lines.append("Крайние даты (нужны слоты раньше):")
+        lines.extend(f"• {d}" for d in dates)
+    else:
+        lines.append("Дат пока нет. Добавьте через /select_dates")
+    await message.answer("\n".join(lines), parse_mode="HTML")
 
 
 async def cmd_slots(message: Message, state: FSMContext) -> None:
     await state.clear()
     if not message.from_user:
         return
+    city = get_city(message.from_user.id)
+    if not city:
+        await message.answer(
+            "Сначала выберите город: /city",
+            reply_markup=city_keyboard(),
+        )
+        return
+
     lock = get_check_lock()
     if lock.locked():
         await message.answer("Уже идёт проверка, подождите…")
@@ -186,12 +266,19 @@ async def cmd_slots(message: Message, state: FSMContext) -> None:
 
     my_dates = get_dates(message.from_user.id)
     status = await message.answer(
-        "Проверяю слоты NORMAL / PRIME / VIP…\nЭто может занять 1–2 минуты."
+        f"Проверяю слоты в <b>{city}</b> (NORMAL / PRIME / VIP)…\n"
+        "Это может занять 1–2 минуты.",
+        parse_mode="HTML",
     )
 
     async with lock:
         try:
-            summary = await check_slots(config=load_config(), headed=False, all_types=True)
+            summary = await check_slots(
+                config=load_config(),
+                city=city,
+                headed=False,
+                all_types=True,
+            )
             text = format_slots_message(summary, my_dates=my_dates)
             log.info("Ответ /slots (%d симв.): %s", len(text), text[:200].replace("\n", " | "))
             try:
@@ -213,10 +300,12 @@ async def main() -> None:
     dp = Dispatcher()
 
     dp.message.register(cmd_start, Command("start"))
+    dp.message.register(cmd_city, Command("city"))
     dp.message.register(cmd_select_dates, Command("select_dates"))
     dp.message.register(cmd_my_dates, Command("my_dates"))
     dp.message.register(cmd_slots, Command("slots"))
 
+    dp.callback_query.register(on_city_set, F.data.startswith("city:set:"))
     dp.callback_query.register(on_date_add, F.data == "date:add")
     dp.callback_query.register(on_date_remove_menu, F.data == "date:remove")
     dp.callback_query.register(on_date_cancel, F.data == "date:cancel")

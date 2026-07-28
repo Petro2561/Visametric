@@ -7,6 +7,7 @@ import logging
 import re
 import sqlite3
 from contextlib import contextmanager
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,6 +17,14 @@ LEGACY_JSON_BAK = ROOT / "data" / "user_dates.json.bak"
 
 DATE_RE = re.compile(r"^(\d{2})-(\d{2})-(\d{4})$")
 log = logging.getLogger(__name__)
+
+CITIES = [
+    "Москва",
+    "Санкт-Петербург",
+    "Екатеринбург",
+    "Новосибирск",
+]
+DEFAULT_CITY = "Москва"
 
 _initialized = False
 
@@ -34,8 +43,29 @@ def normalize_date(raw: str) -> str | None:
     return None
 
 
+def parse_ddmmyyyy(d: str) -> date:
+    """DD-MM-YYYY → date."""
+    dd, mm, yyyy = d.split("-")
+    return date(int(yyyy), int(mm), int(dd))
+
+
 def _date_sort_key(d: str) -> tuple[str, str, str]:
     return (d[6:], d[3:5], d[:2])
+
+
+def earliest_deadline(deadlines: list[str]) -> str | None:
+    """Самая ранняя крайняя дата пользователя."""
+    valid = [d for d in deadlines if DATE_RE.match(d)]
+    if not valid:
+        return None
+    return min(valid, key=parse_ddmmyyyy)
+
+
+def filter_dates_before(free_dates: list[str], deadline: str) -> list[str]:
+    """Свободные даты строго раньше deadline (DD-MM-YYYY)."""
+    dl = parse_ddmmyyyy(deadline)
+    out = [d for d in free_dates if DATE_RE.match(d) and parse_ddmmyyyy(d) < dl]
+    return sorted(out, key=_date_sort_key)
 
 
 def _connect() -> sqlite3.Connection:
@@ -95,6 +125,7 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         ("first_name", "ALTER TABLE users ADD COLUMN first_name TEXT"),
         ("last_name", "ALTER TABLE users ADD COLUMN last_name TEXT"),
         ("updated_at", "ALTER TABLE users ADD COLUMN updated_at TEXT"),
+        ("city", "ALTER TABLE users ADD COLUMN city TEXT"),
     ):
         if col not in cols:
             conn.execute(ddl)
@@ -205,6 +236,36 @@ def register_user(
     return is_new
 
 
+def get_city(user_id: int) -> str | None:
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT city FROM users WHERE telegram_id = ?",
+            (user_id,),
+        ).fetchone()
+    if not row:
+        return None
+    city = row["city"]
+    if isinstance(city, str) and city in CITIES:
+        return city
+    return None
+
+
+def set_city(user_id: int, city: str) -> str:
+    if city not in CITIES:
+        raise ValueError(f"Неизвестный город: {city}")
+    with _db() as conn:
+        _ensure_user(conn, user_id)
+        conn.execute(
+            """
+            UPDATE users
+            SET city = ?, updated_at = datetime('now')
+            WHERE telegram_id = ?
+            """,
+            (city, user_id),
+        )
+    return city
+
+
 def get_dates(user_id: int) -> list[str]:
     with _db() as conn:
         rows = conn.execute(
@@ -215,25 +276,38 @@ def get_dates(user_id: int) -> list[str]:
     return sorted(dates, key=_date_sort_key)
 
 
-def list_users_with_dates() -> list[tuple[int, list[str]]]:
-    """Все пользователи, у которых есть хотя бы одна дата поиска."""
+def list_users_with_dates() -> list[tuple[int, list[str], str]]:
+    """Пользователи с датами: (telegram_id, dates, city)."""
     with _db() as conn:
         rows = conn.execute(
             """
-            SELECT telegram_id, date
-            FROM user_dates
-            ORDER BY telegram_id, date
+            SELECT d.telegram_id, d.date, u.city
+            FROM user_dates d
+            LEFT JOIN users u ON u.telegram_id = d.telegram_id
+            ORDER BY d.telegram_id, d.date
             """
         ).fetchall()
 
     by_user: dict[int, list[str]] = {}
+    city_by_user: dict[int, str] = {}
     for row in rows:
         tid = int(row["telegram_id"])
         by_user.setdefault(tid, []).append(row["date"])
+        city = row["city"]
+        if isinstance(city, str) and city in CITIES:
+            city_by_user[tid] = city
+        else:
+            city_by_user.setdefault(tid, DEFAULT_CITY)
 
-    out: list[tuple[int, list[str]]] = []
+    out: list[tuple[int, list[str], str]] = []
     for tid, dates in by_user.items():
-        out.append((tid, sorted(set(dates), key=_date_sort_key)))
+        out.append(
+            (
+                tid,
+                sorted(set(dates), key=_date_sort_key),
+                city_by_user.get(tid, DEFAULT_CITY),
+            )
+        )
     return out
 
 

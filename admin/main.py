@@ -37,17 +37,19 @@ class UserAdmin(ModelView, model=User):
         User.username,
         User.first_name,
         User.last_name,
+        User.city,
         User.created_at,
         User.updated_at,
     ]
-    column_searchable_list = [User.username, User.first_name, User.telegram_id]
-    column_sortable_list = [User.telegram_id, User.created_at, User.username]
+    column_searchable_list = [User.username, User.first_name, User.telegram_id, User.city]
+    column_sortable_list = [User.telegram_id, User.created_at, User.username, User.city]
     column_default_sort = [(User.created_at, True)]
     form_columns = [
         User.telegram_id,
         User.username,
         User.first_name,
         User.last_name,
+        User.city,
     ]
 
 

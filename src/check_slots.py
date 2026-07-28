@@ -123,22 +123,38 @@ async def check_slots(
             await browser.close()
 
 
-def format_slots_message(summary: dict[str, Any], my_dates: list[str] | None = None) -> str:
+def format_slots_message(
+    summary: dict[str, Any],
+    my_dates: list[str] | None = None,
+    *,
+    before_deadline_only: bool = False,
+) -> str:
+    from .user_dates import earliest_deadline, filter_dates_before
+
     city = summary.get("city") or "—"
     if summary.get("error"):
         return f"❌ {summary['error']}\nГород: {city}"
 
+    deadline = earliest_deadline(my_dates or [])
     by_type = summary.get("by_type") or {}
+
+    def _filter(dates: list[str]) -> list[str]:
+        if before_deadline_only and deadline:
+            return filter_dates_before(dates, deadline)
+        return list(dates)
+
     if not by_type:
-        dates = summary.get("dates") or []
+        dates = _filter(summary.get("dates") or [])
         if not dates:
             return f"Свободных дат не найдено.\nГород: <b>{city}</b>"
         lines = "\n".join(f"• {d}" for d in dates)
         return f"Свободные даты\nГород: <b>{city}</b>\n\n{lines}"
 
     parts = [f"Город: <b>{city}</b>"]
-    my_set = set(my_dates or [])
+    if deadline:
+        parts.append(f"Крайняя дата: <b>{deadline}</b> (нужны слоты раньше)")
 
+    any_early = False
     for t in OFFICE_TYPES:
         block = by_type.get(t)
         if not block:
@@ -146,24 +162,42 @@ def format_slots_message(summary: dict[str, Any], my_dates: list[str] | None = N
         if block.get("error"):
             parts.append(f"\n<b>{t}</b>\n• {block['error']}")
             continue
-        dates = block.get("dates") or []
+        dates = _filter(block.get("dates") or [])
+        if before_deadline_only and not dates:
+            continue
         if not dates:
             parts.append(f"\n<b>{t}</b>\n• нет дат")
             continue
+        any_early = True
         lines = []
         for d in dates:
-            mark = " ✅" if d in my_set else ""
+            early = deadline and d in filter_dates_before([d], deadline)
+            mark = " ✅ раньше дедлайна" if early else ""
             lines.append(f"• {d}{mark}")
         parts.append(f"\n<b>{t}</b>\n" + "\n".join(lines))
 
-    if my_dates:
-        free_all = set(summary.get("dates") or [])
-        hits = [d for d in my_dates if d in free_all]
-        misses = [d for d in my_dates if d not in free_all]
-        parts.append("\nВаши даты:")
-        if hits:
-            parts.append("✅ Есть: " + ", ".join(hits))
-        if misses:
-            parts.append("❌ Нет: " + ", ".join(misses))
+    if before_deadline_only and not any_early:
+        return (
+            f"Город: <b>{city}</b>\n"
+            f"Крайняя дата: <b>{deadline}</b>\n\n"
+            "Слотов раньше этой даты нет."
+        )
+
+    if deadline and not before_deadline_only:
+        early_all = filter_dates_before(summary.get("dates") or [], deadline)
+        parts.append("\nРаньше вашей даты:")
+        if early_all:
+            parts.append("✅ " + ", ".join(early_all))
+        else:
+            parts.append("❌ пока нет")
 
     return "\n".join(parts)
+
+
+def has_slots_before_deadline(summary: dict[str, Any], my_dates: list[str]) -> bool:
+    from .user_dates import earliest_deadline, filter_dates_before
+
+    deadline = earliest_deadline(my_dates)
+    if not deadline:
+        return False
+    return bool(filter_dates_before(summary.get("dates") or [], deadline))
