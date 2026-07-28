@@ -1,0 +1,24 @@
+[Unit]
+Description=Visametric SQLAdmin panel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=petr
+Group=petr
+WorkingDirectory=/Users/petr/Dev/Visametric
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/Users/petr/Dev/Visametric/.env
+ExecStart=/Users/petr/Dev/Visametric/.venv/bin/python -m admin
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+# Логи: journalctl -u visametric-admin -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=visametric-admin
+
+[Install]
+WantedBy=multi-user.target

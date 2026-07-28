@@ -1,0 +1,25 @@
+[Unit]
+Description=Visametric Telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=petr
+Group=petr
+WorkingDirectory=/Users/petr/Dev/Visametric
+Environment=PYTHONUNBUFFERED=1
+Environment=PLAYWRIGHT_BROWSERS_PATH=/Users/petr/Library/Caches/ms-playwright
+EnvironmentFile=-/Users/petr/Dev/Visametric/.env
+ExecStart=/Users/petr/Dev/Visametric/.venv/bin/python /Users/petr/Dev/Visametric/bot.py
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+
+# Логи: journalctl -u visametric-bot -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=visametric-bot
+
+[Install]
+WantedBy=multi-user.target

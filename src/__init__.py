@@ -1,0 +1,1 @@
+"""Пакет Visametric automation."""

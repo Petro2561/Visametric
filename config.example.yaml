@@ -1,0 +1,14 @@
+# Параметры поиска слотов (личные данные не нужны — запись не выполняется).
+
+country: "Шенгенская виза"
+visiting_country: "Германия"
+city: "Москва"
+office: ""                 # пусто = первый доступный
+office_type: "NORMAL"      # NORMAL | PRIME | VIP
+applicants_count: 1
+
+settings:
+  captcha_retries: 15
+  headed: false
+  timeout_ms: 60000
+  artifacts_dir: artifacts
