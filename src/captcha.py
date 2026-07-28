@@ -52,6 +52,13 @@ def _load_model():
     if _model_bundle is not None:
         return _model_bundle
     if not MODEL_PATH.exists():
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Модель %s не найдена — обучаю fallback (синтетика). "
+            "Скопируйте models/digit_mlp.joblib с машины, где OCR работал.",
+            MODEL_PATH,
+        )
         # сначала пробуем обучение на размеченных реальных капчах
         try:
             from .train_real import train_from_labeled

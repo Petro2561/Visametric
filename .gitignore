@@ -8,8 +8,8 @@ config.yaml
 .env
 .DS_Store
 *.log
-models/*.joblib
-*.sqlite
-*.sqlite-journal
 .idea/
 .vscode/
+*.sqlite
+*.sqlite-journal
+
