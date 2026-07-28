@@ -13,6 +13,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
+    BotCommand,
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -291,6 +292,15 @@ async def cmd_slots(message: Message, state: FSMContext) -> None:
             await message.answer("Ошибка при проверке слотов.")
 
 
+BOT_COMMANDS = [
+    BotCommand(command="start", description="О боте и выбор города"),
+    BotCommand(command="city", description="Выбрать город"),
+    BotCommand(command="select_dates", description="Крайняя дата (слоты раньше неё)"),
+    BotCommand(command="my_dates", description="Город и ваши даты"),
+    BotCommand(command="slots", description="Проверить слоты сейчас"),
+]
+
+
 async def main() -> None:
     token = os.getenv("BOT_TOKEN", "").strip()
     if not token:
@@ -312,6 +322,9 @@ async def main() -> None:
     dp.callback_query.register(on_date_del, F.data.startswith("date:del:"))
 
     dp.message.register(on_add_date_text, StateFilter(DateFSM.waiting_add), F.text)
+
+    await bot.set_my_commands(BOT_COMMANDS)
+    log.info("Команды меню обновлены: %s", [c.command for c in BOT_COMMANDS])
 
     start_scheduler(bot)
     log.info("Бот запущен")
