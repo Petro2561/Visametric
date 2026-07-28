@@ -5,18 +5,17 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=petr
-Group=petr
-WorkingDirectory=/Users/petr/Dev/Visametric
+User=root
+Group=root
+WorkingDirectory=/home/petro2561/Visametric
 Environment=PYTHONUNBUFFERED=1
-Environment=PLAYWRIGHT_BROWSERS_PATH=/Users/petr/Library/Caches/ms-playwright
-EnvironmentFile=-/Users/petr/Dev/Visametric/.env
-ExecStart=/Users/petr/Dev/Visametric/.venv/bin/python /Users/petr/Dev/Visametric/bot.py
+Environment=PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
+EnvironmentFile=-/home/petro2561/Visametric/.env
+ExecStart=/home/petro2561/Visametric/.venv/bin/python /home/petro2561/Visametric/bot.py
 Restart=always
 RestartSec=10
 TimeoutStopSec=30
 
-# Логи: journalctl -u visametric-bot -f
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=visametric-bot

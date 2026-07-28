@@ -1,6 +1,7 @@
 [Unit]
 Description=Visametric bot + admin
-Wants=visametric-bot.service visametric-admin.service
+Requires=visametric-bot.service visametric-admin.service
+After=visametric-bot.service visametric-admin.service
 
 [Install]
 WantedBy=multi-user.target

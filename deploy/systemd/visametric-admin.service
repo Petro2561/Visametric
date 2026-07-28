@@ -5,17 +5,16 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=petr
-Group=petr
-WorkingDirectory=/Users/petr/Dev/Visametric
+User=root
+Group=root
+WorkingDirectory=/home/petro2561/Visametric
 Environment=PYTHONUNBUFFERED=1
-EnvironmentFile=-/Users/petr/Dev/Visametric/.env
-ExecStart=/Users/petr/Dev/Visametric/.venv/bin/python -m admin
+EnvironmentFile=-/home/petro2561/Visametric/.env
+ExecStart=/home/petro2561/Visametric/.venv/bin/python -m admin
 Restart=always
 RestartSec=5
 TimeoutStopSec=20
 
-# Логи: journalctl -u visametric-admin -f
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=visametric-admin

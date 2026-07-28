@@ -1,39 +1,42 @@
-# Systemd: бот + админка
+# Systemd: бот + админка (Linux VPS)
 
-Файлы в этой папке рассчитаны на Linux. На macOS systemd нет — там запускайте вручную или через launchd.
+Пути по умолчанию: `/home/petro2561/Visametric`, пользователь `root`.
 
-## Установка
-
-Подправьте в `.service` при необходимости:
-- `User` / `Group`
-- `WorkingDirectory`
-- путь к `.venv/bin/python`
-- `PLAYWRIGHT_BROWSERS_PATH` (на Linux обычно `~/.cache/ms-playwright`)
+## Подготовка на сервере
 
 ```bash
-sudo cp deploy/systemd/visametric-bot.service /etc/systemd/system/
-sudo cp deploy/systemd/visametric-admin.service /etc/systemd/system/
-sudo cp deploy/systemd/visametric.target /etc/systemd/system/
+cd /home/petro2561/Visametric
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+playwright install chromium
+playwright install-deps chromium   # если нужно
+cp .env.example .env               # и заполнить BOT_TOKEN / ADMIN_*
+```
+
+## Установка unit-файлов
+
+Важно: пробелы в команде `cp` обязательны.
+
+```bash
+cd /home/petro2561/Visametric
+sudo cp deploy/systemd/visametric-bot.service \
+        deploy/systemd/visametric-admin.service \
+        deploy/systemd/visametric.target \
+        /etc/systemd/system/
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now visametric.target
+sudo systemctl enable --now visametric-bot visametric-admin
+# или: sudo systemctl enable --now visametric.target
 ```
 
-Или по отдельности:
+## Диагностика
 
 ```bash
-sudo systemctl enable --now visametric-bot
-sudo systemctl enable --now visametric-admin
+systemctl status visametric-bot visametric-admin --no-pager
+journalctl -u visametric-bot -n 50 --no-pager
+journalctl -u visametric-admin -n 50 --no-pager
 ```
 
-## Управление
-
-```bash
-sudo systemctl status visametric-bot visametric-admin
-sudo systemctl restart visametric-bot
-sudo systemctl restart visametric-admin
-journalctl -u visametric-bot -f
-journalctl -u visametric-admin -f
-```
-
-Админка: http://127.0.0.1:8000/admin (хост/порт из `.env`: `ADMIN_HOST`, `ADMIN_PORT`).
+Админка: http://SERVER_IP:8000/admin  
+Для доступа снаружи в `.env`: `ADMIN_HOST=0.0.0.0`
