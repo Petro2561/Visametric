@@ -23,7 +23,8 @@ from .check_slots import (
     has_slots_before_deadline,
     load_config,
 )
-from .user_dates import DEFAULT_CITY, earliest_deadline, list_users_with_dates
+from .notify import notify_support, user_label_from_parts
+from .user_dates import DEFAULT_CITY, earliest_deadline, get_user_profile, list_users_with_dates
 
 ROOT = Path(__file__).resolve().parents[1]
 JOBS_DB = ROOT / "data" / "apscheduler.sqlite"
@@ -126,6 +127,21 @@ async def hourly_slots_check() -> None:
                     reply_markup=stop_search_keyboard(),
                 )
                 sent += 1
+                profile = get_user_profile(user_id)
+                full_name = " ".join(
+                    p
+                    for p in (profile.get("first_name"), profile.get("last_name"))
+                    if p
+                ) or None
+                who = user_label_from_parts(
+                    user_id,
+                    username=profile.get("username"),
+                    full_name=full_name,
+                )
+                await notify_support(
+                    bot,
+                    f"📤 Авторассылка слотов\nКому: {who}\n\n{text}",
+                )
             except Exception:
                 log.exception("Не удалось отправить user_id=%s", user_id)
 

@@ -236,6 +236,30 @@ def register_user(
     return is_new
 
 
+def get_user_profile(user_id: int) -> dict[str, str | None]:
+    with _db() as conn:
+        row = conn.execute(
+            """
+            SELECT username, first_name, last_name, city
+            FROM users WHERE telegram_id = ?
+            """,
+            (user_id,),
+        ).fetchone()
+    if not row:
+        return {
+            "username": None,
+            "first_name": None,
+            "last_name": None,
+            "city": None,
+        }
+    return {
+        "username": row["username"],
+        "first_name": row["first_name"],
+        "last_name": row["last_name"],
+        "city": row["city"],
+    }
+
+
 def get_city(user_id: int) -> str | None:
     with _db() as conn:
         row = conn.execute(

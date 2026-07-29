@@ -22,6 +22,13 @@ from aiogram.types import (
 from dotenv import load_dotenv
 
 from src.check_slots import check_slots, format_slots_message, load_config
+from src.notify import (
+    SUPPORT_LINK,
+    SUPPORT_USERNAME,
+    notify_support,
+    support_dest,
+    user_label_from_parts,
+)
 from src.scheduler import get_check_lock, shutdown_scheduler, start_scheduler
 from src.user_dates import (
     CITIES,
@@ -41,18 +48,13 @@ load_dotenv(ROOT / ".env")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("bot")
 
-SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "visametric_bretzel").strip().lstrip("@")
-SUPPORT_CHAT_ID = os.getenv("SUPPORT_CHAT_ID", "").strip()
-SUPPORT_LINK = f"https://t.me/{SUPPORT_USERNAME}"
 
-
-def support_dest() -> int | str:
-    """Куда слать сообщения пользователей (chat id или @username)."""
-    if SUPPORT_CHAT_ID:
-        if SUPPORT_CHAT_ID.lstrip("-").isdigit():
-            return int(SUPPORT_CHAT_ID)
-        return SUPPORT_CHAT_ID
-    return f"@{SUPPORT_USERNAME}"
+def _user_label(user) -> str:
+    return user_label_from_parts(
+        user.id,
+        username=user.username,
+        full_name=user.full_name,
+    )
 
 
 class DateFSM(StatesGroup):
@@ -270,6 +272,13 @@ async def cmd_slots(message: Message, state: FSMContext) -> None:
         return
 
     my_dates = get_dates(message.from_user.id)
+    await notify_support(
+        message.bot,
+        "👁 /slots\n"
+        f"{_user_label(message.from_user)}\n"
+        f"Город: {city}\n"
+        f"Крайние даты: {', '.join(my_dates) if my_dates else 'нет'}",
+    )
     status = await message.answer(
         f"Проверяю слоты в <b>{city}</b> (NORMAL / PRIME / VIP)…\n"
         "Это может занять 1–2 минуты.",
@@ -291,9 +300,21 @@ async def cmd_slots(message: Message, state: FSMContext) -> None:
             except Exception:
                 pass
             await message.answer(text, parse_mode="HTML")
+            await notify_support(
+                message.bot,
+                "📤 /slots → пользователю\n"
+                f"Кому: {_user_label(message.from_user)}\n\n"
+                f"{text}",
+            )
         except Exception:
             log.exception("Ошибка /slots")
             await message.answer("Ошибка при проверке слотов.")
+            await notify_support(
+                message.bot,
+                "❌ /slots ошибка\n"
+                f"{_user_label(message.from_user)}\n"
+                f"Город: {city}",
+            )
 
 
 async def cmd_support(message: Message, state: FSMContext) -> None:
@@ -314,13 +335,8 @@ async def on_free_text(message: Message, bot: Bot) -> None:
     if message.text.startswith("/"):
         return
 
-    user = message.from_user
     dest = support_dest()
-    who = f"id={user.id}"
-    if user.username:
-        who += f" @{user.username}"
-    if user.full_name:
-        who += f" ({user.full_name})"
+    who = _user_label(message.from_user)
 
     try:
         await bot.send_message(
