@@ -140,8 +140,13 @@ async def on_city_set(callback: CallbackQuery, state: FSMContext) -> None:
         return
     register_user(callback.from_user.id)
     set_city(callback.from_user.id, city)
+    await state.set_state(DateFSM.waiting_add)
     await callback.message.answer(
-        f"Город: <b>{city}</b>\nДальше укажите крайнюю дату: /select_dates",
+        f"Город: <b>{city}</b>\n\n"
+        "Укажите <b>крайнюю дату</b>: нужны слоты <b>раньше</b> неё.\n"
+        "Пример: поставили <code>29-09-2026</code> — придёт уведомление, "
+        "если появится 17-09-2026 или другая дата до 29-09.\n\n"
+        "Пришлите дату в формате <code>DD-MM-YYYY</code>",
         parse_mode="HTML",
     )
 
