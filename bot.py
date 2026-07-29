@@ -40,6 +40,19 @@ load_dotenv(ROOT / ".env")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("bot")
 
+SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "visametricgermanybot").strip().lstrip("@")
+SUPPORT_CHAT_ID = os.getenv("SUPPORT_CHAT_ID", "").strip()
+SUPPORT_LINK = f"https://t.me/{SUPPORT_USERNAME}"
+
+
+def support_dest() -> int | str:
+    """Куда слать сообщения пользователей (chat id или @username)."""
+    if SUPPORT_CHAT_ID:
+        if SUPPORT_CHAT_ID.lstrip("-").isdigit():
+            return int(SUPPORT_CHAT_ID)
+        return SUPPORT_CHAT_ID
+    return f"@{SUPPORT_USERNAME}"
+
 
 class DateFSM(StatesGroup):
     waiting_add = State()
@@ -92,7 +105,8 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
         "/city — выбрать город\n"
         "/select_dates — крайняя дата\n"
         "/my_dates — ваши настройки\n"
-        "/slots — проверить слоты сейчас\n\n"
+        "/slots — проверить слоты сейчас\n"
+        "/support — поддержка\n\n"
         "Автопроверка идёт по расписанию; пустые отчёты не приходят.",
         parse_mode="HTML",
     )
@@ -258,12 +272,61 @@ async def cmd_slots(message: Message, state: FSMContext) -> None:
             await message.answer("Ошибка при проверке слотов.")
 
 
+async def cmd_support(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer(
+        "Поддержка: "
+        f"<a href=\"{SUPPORT_LINK}\">@{SUPPORT_USERNAME}</a>\n\n"
+        "Или просто напишите сообщение в этот чат — мы его получим.",
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
+
+
+async def on_free_text(message: Message, bot: Bot) -> None:
+    """Любой свободный текст (не команда и не ввод даты) → в поддержку."""
+    if not message.from_user or not message.text:
+        return
+    if message.text.startswith("/"):
+        return
+
+    user = message.from_user
+    dest = support_dest()
+    who = f"id={user.id}"
+    if user.username:
+        who += f" @{user.username}"
+    if user.full_name:
+        who += f" ({user.full_name})"
+
+    try:
+        await bot.send_message(
+            dest,
+            f"📩 Сообщение от пользователя\n{who}\n\n{message.text}",
+        )
+        try:
+            await message.forward(dest)
+        except Exception:
+            log.exception("forward в поддержку не удался (текст уже отправлен)")
+        await message.answer(
+            "Сообщение отправлено в поддержку.\n"
+            f"Также можно написать напрямую: @{SUPPORT_USERNAME}"
+        )
+    except Exception:
+        log.exception("Не удалось отправить в поддержку dest=%s", dest)
+        await message.answer(
+            "Не удалось автоматически переслать сообщение.\n"
+            f"Напишите в поддержку: @{SUPPORT_USERNAME}\n"
+            f"{SUPPORT_LINK}"
+        )
+
+
 BOT_COMMANDS = [
     BotCommand(command="start", description="О боте и выбор города"),
     BotCommand(command="city", description="Выбрать город"),
     BotCommand(command="select_dates", description="Крайняя дата (слоты раньше неё)"),
     BotCommand(command="my_dates", description="Город и ваши даты"),
     BotCommand(command="slots", description="Проверить слоты сейчас"),
+    BotCommand(command="support", description="Поддержка"),
 ]
 
 
@@ -280,12 +343,15 @@ async def main() -> None:
     dp.message.register(cmd_select_dates, Command("select_dates"))
     dp.message.register(cmd_my_dates, Command("my_dates"))
     dp.message.register(cmd_slots, Command("slots"))
+    dp.message.register(cmd_support, Command("support"))
 
     dp.callback_query.register(on_city_set, F.data.startswith("city:set:"))
     dp.callback_query.register(on_date_cancel, F.data == "date:cancel")
     dp.callback_query.register(on_date_del, F.data.startswith("date:del:"))
 
     dp.message.register(on_add_date_text, StateFilter(DateFSM.waiting_add), F.text)
+    # свободный текст — в поддержку (после всех остальных хендлеров)
+    dp.message.register(on_free_text, F.text)
 
     await bot.set_my_commands(BOT_COMMANDS)
     log.info("Команды меню обновлены: %s", [c.command for c in BOT_COMMANDS])
