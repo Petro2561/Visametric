@@ -43,23 +43,12 @@ log = logging.getLogger("bot")
 
 class DateFSM(StatesGroup):
     waiting_add = State()
-    waiting_remove = State()
-
-
-def select_dates_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Добавить дату", callback_data="date:add"),
-                InlineKeyboardButton(text="Удалить дату", callback_data="date:remove"),
-            ]
-        ]
-    )
 
 
 def remove_dates_keyboard(dates: list[str]) -> InlineKeyboardMarkup:
     rows = [
-        [InlineKeyboardButton(text=d, callback_data=f"date:del:{d}")] for d in dates
+        [InlineKeyboardButton(text=f"Удалить {d}", callback_data=f"date:del:{d}")]
+        for d in dates
     ]
     rows.append([InlineKeyboardButton(text="Отмена", callback_data="date:cancel")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -152,40 +141,13 @@ async def cmd_select_dates(message: Message, state: FSMContext) -> None:
             reply_markup=city_keyboard(),
         )
         return
+    await state.set_state(DateFSM.waiting_add)
     await message.answer(
         "Укажите <b>крайнюю дату</b>: нужны слоты <b>раньше</b> неё.\n"
         "Пример: поставили <code>29-09-2026</code> — придёт уведомление, "
         "если появится 17-09-2026 или другая дата до 29-09.\n\n"
-        "Формат: <code>DD-MM-YYYY</code>",
+        "Пришлите дату в формате <code>DD-MM-YYYY</code>",
         parse_mode="HTML",
-        reply_markup=select_dates_keyboard(),
-    )
-
-
-async def on_date_add(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.answer()
-    await state.set_state(DateFSM.waiting_add)
-    if callback.message:
-        await callback.message.answer(
-            "Пришлите крайнюю дату:\n<code>DD-MM-YYYY</code>\n"
-            "(уведомления — только про слоты раньше этой даты)",
-            parse_mode="HTML",
-        )
-
-
-async def on_date_remove_menu(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.answer()
-    if not callback.from_user or not callback.message:
-        return
-    dates = get_dates(callback.from_user.id)
-    if not dates:
-        await state.clear()
-        await callback.message.answer("Список дат пуст. Сначала добавьте дату.")
-        return
-    await state.set_state(DateFSM.waiting_remove)
-    await callback.message.answer(
-        "Выберите дату для удаления:",
-        reply_markup=remove_dates_keyboard(dates),
     )
 
 
@@ -219,16 +181,15 @@ async def on_add_date_text(message: Message, state: FSMContext) -> None:
     if not date:
         await message.answer("Неверный формат. Нужно: <code>DD-MM-YYYY</code>", parse_mode="HTML")
         return
-    dates = add_date(message.from_user.id, date)
+    add_date(message.from_user.id, date)
     await state.clear()
     city = get_city(message.from_user.id) or "не выбран"
     await message.answer(
-        "Крайняя дата: <b>{}</b>\n"
-        "Город: <b>{}</b>\n"
-        "Будем присылать слоты <b>строго раньше</b> этой даты.\n\n"
-        "Ваши даты:\n{}".format(
-            date, city, "\n".join(f"• {d}" for d in dates)
-        ),
+        "Дата успешно установлена: <b>{}</b>\n"
+        "Город: <b>{}</b>\n\n"
+        "Вам будут приходить уведомления, когда появятся слоты "
+        "<b>раньше</b> этой даты.\n\n"
+        "Свободные слоты можете посмотреть через /slots".format(date, city),
         parse_mode="HTML",
     )
 
@@ -243,9 +204,14 @@ async def cmd_my_dates(message: Message, state: FSMContext) -> None:
     if dates:
         lines.append("Крайние даты (нужны слоты раньше):")
         lines.extend(f"• {d}" for d in dates)
+        await message.answer(
+            "\n".join(lines),
+            parse_mode="HTML",
+            reply_markup=remove_dates_keyboard(dates),
+        )
     else:
         lines.append("Дат пока нет. Добавьте через /select_dates")
-    await message.answer("\n".join(lines), parse_mode="HTML")
+        await message.answer("\n".join(lines), parse_mode="HTML")
 
 
 async def cmd_slots(message: Message, state: FSMContext) -> None:
@@ -316,8 +282,6 @@ async def main() -> None:
     dp.message.register(cmd_slots, Command("slots"))
 
     dp.callback_query.register(on_city_set, F.data.startswith("city:set:"))
-    dp.callback_query.register(on_date_add, F.data == "date:add")
-    dp.callback_query.register(on_date_remove_menu, F.data == "date:remove")
     dp.callback_query.register(on_date_cancel, F.data == "date:cancel")
     dp.callback_query.register(on_date_del, F.data.startswith("date:del:"))
 
