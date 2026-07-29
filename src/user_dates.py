@@ -328,3 +328,13 @@ def remove_date(user_id: int, date: str) -> list[str]:
             (user_id, date),
         )
     return get_dates(user_id)
+
+
+def clear_dates(user_id: int) -> int:
+    """Удаляет все крайние даты пользователя. Возвращает сколько удалено."""
+    with _db() as conn:
+        cur = conn.execute(
+            "DELETE FROM user_dates WHERE telegram_id = ?",
+            (user_id,),
+        )
+        return int(cur.rowcount or 0)

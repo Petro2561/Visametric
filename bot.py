@@ -26,6 +26,7 @@ from src.scheduler import get_check_lock, shutdown_scheduler, start_scheduler
 from src.user_dates import (
     CITIES,
     add_date,
+    clear_dates,
     get_city,
     get_dates,
     normalize_date,
@@ -40,7 +41,7 @@ load_dotenv(ROOT / ".env")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("bot")
 
-SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "visametricgermanybot").strip().lstrip("@")
+SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "visametric_bretzel").strip().lstrip("@")
 SUPPORT_CHAT_ID = os.getenv("SUPPORT_CHAT_ID", "").strip()
 SUPPORT_LINK = f"https://t.me/{SUPPORT_USERNAME}"
 
@@ -110,8 +111,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
         parse_mode="HTML",
     )
     await message.answer(
-        "Выберите город:" if not city else f"Текущий город: <b>{city}</b>\nСменить:",
-        parse_mode="HTML",
+        "Выберите город:",
         reply_markup=city_keyboard(city),
     )
 
@@ -162,6 +162,26 @@ async def cmd_select_dates(message: Message, state: FSMContext) -> None:
         "Пришлите дату в формате <code>DD-MM-YYYY</code>",
         parse_mode="HTML",
     )
+
+
+async def on_search_stop(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    if not callback.from_user:
+        return
+    await state.clear()
+    n = clear_dates(callback.from_user.id)
+    text = (
+        "Поиск остановлен. Крайние даты удалены — уведомления больше не придут."
+        if n
+        else "Поиск уже остановлен: крайних дат нет."
+    )
+    text += "\nЧтобы снова искать: /select_dates"
+    if callback.message:
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        await callback.message.answer(text)
 
 
 async def on_date_del(callback: CallbackQuery, state: FSMContext) -> None:
@@ -345,6 +365,7 @@ async def main() -> None:
     dp.message.register(cmd_support, Command("support"))
 
     dp.callback_query.register(on_city_set, F.data.startswith("city:set:"))
+    dp.callback_query.register(on_search_stop, F.data == "search:stop")
     dp.callback_query.register(on_date_cancel, F.data == "date:cancel")
     dp.callback_query.register(on_date_del, F.data.startswith("date:del:"))
 

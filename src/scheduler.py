@@ -10,6 +10,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, EVENT_JOB_MISSED
 from apscheduler.executors.asyncio import AsyncIOExecutor
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -44,6 +45,19 @@ def get_check_lock() -> asyncio.Lock:
 def set_bot(bot: Bot) -> None:
     global _bot
     _bot = bot
+
+
+def stop_search_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Остановить поиск",
+                    callback_data="search:stop",
+                )
+            ]
+        ]
+    )
 
 
 async def hourly_slots_check() -> None:
@@ -105,7 +119,12 @@ async def hourly_slots_check() -> None:
                 )
             )
             try:
-                await bot.send_message(user_id, text, parse_mode="HTML")
+                await bot.send_message(
+                    user_id,
+                    text,
+                    parse_mode="HTML",
+                    reply_markup=stop_search_keyboard(),
+                )
                 sent += 1
             except Exception:
                 log.exception("Не удалось отправить user_id=%s", user_id)
