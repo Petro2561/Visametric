@@ -106,8 +106,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
         "/select_dates — крайняя дата\n"
         "/my_dates — ваши настройки\n"
         "/slots — проверить слоты сейчас\n"
-        "/support — поддержка\n\n"
-        "Автопроверка идёт по расписанию; пустые отчёты не приходят.",
+        "/support — поддержка",
         parse_mode="HTML",
     )
     await message.answer(
