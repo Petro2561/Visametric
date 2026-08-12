@@ -8,7 +8,8 @@ office_type: "NORMAL"      # NORMAL | PRIME | VIP
 applicants_count: 1
 
 settings:
-  captcha_retries: 15
+  captcha_retries: 8
   headed: false
-  timeout_ms: 60000
+  timeout_ms: 45000
+  check_timeout_sec: 180   # общий лимит одной проверки (сек)
   artifacts_dir: artifacts

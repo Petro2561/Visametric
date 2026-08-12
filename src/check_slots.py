@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -30,6 +31,16 @@ def load_config(path: Path | None = None) -> dict[str, Any]:
     return data
 
 
+def _empty_error(city: Any, error: str) -> dict[str, Any]:
+    return {
+        "available_date_count": 0,
+        "dates": [],
+        "by_type": {},
+        "error": error,
+        "city": city,
+    }
+
+
 async def check_slots(
     *,
     config: dict[str, Any] | None = None,
@@ -40,17 +51,50 @@ async def check_slots(
 ) -> dict[str, Any]:
     """
     Капча → шаг 1 → даты для NORMAL / PRIME / VIP (по умолчанию все).
+    Общий таймаут, чтобы проверка не зависала навечно и не блокировала lock.
     """
     cfg = dict(config or load_config())
     if city:
         cfg["city"] = city
 
     settings = cfg.setdefault("settings", {})
+    check_timeout = float(settings.get("check_timeout_sec", 180))
+
+    try:
+        return await asyncio.wait_for(
+            _check_slots_inner(
+                cfg=cfg,
+                headed=headed,
+                all_types=all_types,
+                office_type=office_type,
+            ),
+            timeout=check_timeout,
+        )
+    except asyncio.TimeoutError:
+        log.error(
+            "check_slots: таймаут %.0fс (city=%s)",
+            check_timeout,
+            cfg.get("city"),
+        )
+        return _empty_error(
+            cfg.get("city"),
+            f"Проверка превысила лимит времени ({int(check_timeout)} с)",
+        )
+
+
+async def _check_slots_inner(
+    *,
+    cfg: dict[str, Any],
+    headed: bool,
+    all_types: bool,
+    office_type: str | None,
+) -> dict[str, Any]:
+    settings = cfg.setdefault("settings", {})
     artifacts = ROOT / settings.get("artifacts_dir", "artifacts")
     artifacts.mkdir(parents=True, exist_ok=True)
 
-    captcha_retries = int(settings.get("captcha_retries", 15))
-    timeout_ms = int(settings.get("timeout_ms", 60_000))
+    captcha_retries = int(settings.get("captcha_retries", 8))
+    timeout_ms = int(settings.get("timeout_ms", 45_000))
     headless = not headed
 
     types = (
@@ -72,6 +116,7 @@ async def check_slots(
                 ),
             )
             page = await context.new_page()
+            page.set_default_timeout(timeout_ms)
 
             ok = await pass_captcha(
                 page,
@@ -81,13 +126,7 @@ async def check_slots(
             )
             if not ok:
                 await page.screenshot(path=str(artifacts / "captcha_exhausted.png"))
-                return {
-                    "available_date_count": 0,
-                    "dates": [],
-                    "by_type": {},
-                    "error": "Не удалось пройти капчу",
-                    "city": cfg.get("city"),
-                }
+                return _empty_error(cfg.get("city"), "Не удалось пройти капчу")
 
             await dump_form_snapshot(page, artifacts)
             by_type_raw = await fill_to_slots_by_types(page, cfg, office_types=types)
@@ -120,7 +159,10 @@ async def check_slots(
             )
             return summary
         finally:
-            await browser.close()
+            try:
+                await browser.close()
+            except Exception:
+                log.exception("Не удалось закрыть браузер")
 
 
 def format_slots_message(

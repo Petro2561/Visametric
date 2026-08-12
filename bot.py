@@ -268,7 +268,9 @@ async def cmd_slots(message: Message, state: FSMContext) -> None:
 
     lock = get_check_lock()
     if lock.locked():
-        await message.answer("Уже идёт проверка, подождите…")
+        await message.answer(
+            "Уже идёт проверка (ваша или по расписанию). Подождите пару минут и повторите /slots."
+        )
         return
 
     my_dates = get_dates(message.from_user.id)
@@ -281,7 +283,7 @@ async def cmd_slots(message: Message, state: FSMContext) -> None:
     )
     status = await message.answer(
         f"Проверяю слоты в <b>{city}</b> (NORMAL / PRIME / VIP)…\n"
-        "Это может занять 1–2 минуты.",
+        "Обычно до 2–3 минут. Если дольше — напишите в /support.",
         parse_mode="HTML",
     )
 
@@ -294,7 +296,11 @@ async def cmd_slots(message: Message, state: FSMContext) -> None:
                 all_types=True,
             )
             text = format_slots_message(summary, my_dates=my_dates)
-            log.info("Ответ /slots (%d симв.): %s", len(text), text[:200].replace("\n", " | "))
+            log.info(
+                "Ответ /slots (%d симв.): %s",
+                len(text),
+                text[:200].replace("\n", " | "),
+            )
             try:
                 await status.edit_text("Готово ↓")
             except Exception:
@@ -308,7 +314,11 @@ async def cmd_slots(message: Message, state: FSMContext) -> None:
             )
         except Exception:
             log.exception("Ошибка /slots")
-            await message.answer("Ошибка при проверке слотов.")
+            try:
+                await status.edit_text("Ошибка при проверке.")
+            except Exception:
+                pass
+            await message.answer("Ошибка при проверке слотов. Попробуйте ещё раз через минуту.")
             await notify_support(
                 message.bot,
                 "❌ /slots ошибка\n"

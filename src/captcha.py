@@ -52,22 +52,11 @@ def _load_model():
     if _model_bundle is not None:
         return _model_bundle
     if not MODEL_PATH.exists():
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "Модель %s не найдена — обучаю fallback (синтетика). "
-            "Скопируйте models/digit_mlp.joblib с машины, где OCR работал.",
-            MODEL_PATH,
+        raise FileNotFoundError(
+            f"Модель OCR не найдена: {MODEL_PATH}. "
+            "Скопируйте models/digit_mlp.joblib на сервер — "
+            "обучение во время проверки отключено (зависает бота)."
         )
-        # сначала пробуем обучение на размеченных реальных капчах
-        try:
-            from .train_real import train_from_labeled
-
-            train_from_labeled()
-        except Exception:
-            from .train_digits import train_and_save
-
-            train_and_save(n_captchas=1000)
     _model_bundle = joblib.load(MODEL_PATH)
     return _model_bundle
 
@@ -133,11 +122,11 @@ def solve_captcha_image(image_bytes: bytes) -> str:
         preds.append(str(pred))
     mlp_code = "".join(preds)
 
-    ocr_code = _ddddocr_digits(image_bytes)
-
-    # предпочитаем MLP (обучен под стиль); OCR — если ровно 4 и MLP неуверен
+    # MLP обычно достаточно; ddddocr — тяжёлый fallback (может долго грузиться)
     if len(mlp_code) == 4:
         return mlp_code
+
+    ocr_code = _ddddocr_digits(image_bytes)
     if len(ocr_code) == 4:
         return ocr_code
     return (mlp_code + ocr_code)[:4]

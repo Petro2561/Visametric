@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Any
@@ -102,7 +103,15 @@ async def pass_captcha(
         except Exception:
             pass
 
-        code = solve_captcha_data_url(src)
+        try:
+            # OCR синхронный (cv2/sklearn) — не блокируем event loop бота
+            code = await asyncio.to_thread(solve_captcha_data_url, src)
+        except FileNotFoundError as exc:
+            logger.error("%s", exc)
+            return False
+        except Exception:
+            logger.exception("OCR упал на попытке %s", attempt)
+            continue
         logger.info("OCR результат: %r", code)
 
         if len(code) != 4:
